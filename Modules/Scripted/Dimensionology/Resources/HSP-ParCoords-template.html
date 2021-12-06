@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+
+<link rel="stylesheet"" type="text/css" href="https://cdn.jsdelivr.net/npm/parcoord-es@2.2.10/dist/parcoords.css">
+
+<style>
+* {
+  font: 12px sans-serif;
+}
+
+.split {
+  width: 50%;
+  position: fixed;
+  z-index: 1;
+  overflow: scroll;
+  padding-top: 20px;
+}
+
+.left {
+  left: 0;
+  background-color: #ccc;
+}
+
+.right {
+  right: 0;
+  background-color: #aaa;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/parcoord-es@2.2.10/dist/parcoords.standalone.js"></script>
+
+<body>
+
+<div id="chart" class="parcoords" style="resize:both;width:100%;height:800px"></div>
+
+<div id="categoricals"></div>
+
+<div class="split left">
+  <p id="subjectLabel">No image</p>
+  <img id="subjectImage"></img>
+</div>
+
+<div class="split right">
+  <p id="radiologyReport">Radiology Report</p>
+</div>
+
+
+<script>
+
+const dataToPlot = %%dataToPlot%%;
+
+const categoricals = %%categoricals%%;
+
+const radiologyReports = %%radiologyReports%%;
+
+const renderState = {};
+
+const colorFunction = function(dataObject) {
+
+  let opacity = 0.6;
+
+  /* TODO
+  Object.keys(renderState).forEach(categorical => {
+    if (renderState[categorical][dataObject[categorical]] == false) {
+      opacity = 0.0;
+    }
+  });
+  */
+
+  if (dataObject['total volume'] >= 1000. * 1000.) {
+    color = `rgba(0,200,0,${opacity})`
+  } else {
+    color = `rgba(200,0,0,${opacity})`
+  }
+  return (color);
+}
+
+const userConfig = {
+  markedLineWidth: 5,
+  markedShadowColor: "#888",
+}
+
+var parcoords = ParCoords(userConfig)("#chart")
+  .data(dataToPlot)
+  //.mode("queue")
+  .color(colorFunction)
+  .render()
+  .createAxes()
+;
+
+parcoords
+  .brushMode("1D-axes-multi")
+//  .brushMode("2D-strums")
+//  .brushMode("angular")
+//  .brushedColor("#00a")
+  .alphaOnBrushed(0.4)
+//  .reorderable(true)
+;
+
+parcoords.ctx.marked
+
+function showSubjectDetail(subject, hoveredDimension) {
+  const subjectImage = document.getElementById("subjectImage");
+  subjectImage.src = `./SubjectImages/${subject}.jpg`;
+  const subjectLabel = document.getElementById("subjectLabel");
+  subjectLabel.innerText = `${subject} ${hoveredDimension}`;
+  const radiologyReportElement = document.getElementById("radiologyReport");
+  const subjectID = subject.split("_")[0];
+  radiologyReportElement.innerText = radiologyReports[subjectID];
+
+}
+
+function showTractInSlicer(subjectID, tract) {
+  if (window.slicerPython) {
+    const dataString = JSON.stringify({
+      brushedSubjectID: subjectID,
+      brushedTracts: [tract]
+    });
+    window.slicerPython.evalPython(`
+
+slicer.modules.DimensionologyWidget.logic.showHSPBrushedDimension(${dataString})
+
+    `);
+  }
+}
+
+
+parcoords.on("brush", brushedData => {
+  parcoords.clear('marked');
+  const brushedTracts = []
+  const brushExtents = parcoords.brushExtents();
+  Object.keys(brushExtents).forEach(brushExtent => {
+    if (brushExtents[brushExtent].length > 0) {
+      brushedTracts.push(brushExtent);
+    }
+  });
+  if (brushedData.length > 0) {
+    parcoords.mark([brushedData[0]]);
+
+    const mode = "showBrushedTract";
+
+    if (mode == "showBrushedTract") {
+      showSubjectDetail(brushedData[0].id, brushedTracts[0]);
+      showTractInSlicer(brushedData[0].id, brushedTracts[0]);
+    }
+  }
+})
+
+
+//
+// select on mouseover
+//
+const chart = document.getElementById("chart");
+let hoveredDimension = undefined;
+let closestSubject = undefined;
+let hoveredSubjectID = undefined;
+let pickedSubjectID = undefined;
+let shownSubjectID = undefined;
+let dimensionRanges = {};
+
+
+for (let dimension of document.getElementsByClassName("dimension")) {
+  dimension.addEventListener("mouseover", event => {
+    hoveredDimension = dimension.lastChild.getAttribute("dimension");
+  });
+}
+
+chart.addEventListener("mousedown", event => {
+  pickedSubjectID = hoveredSubjectID;
+  event.stopPropagation();
+  event.preventDefault();
+}, {capture: true});
+
+chart.addEventListener("mouseup", event => {
+  pickedSubjectID = undefined;
+}, {capture: true});
+
+document.addEventListener("keydown", event => {
+  if (event.key == "s") {
+    showTractInSlicer(shownSubjectID, hoveredDimension);
+  }
+});
+
+chart.addEventListener("mousemove", event => {
+  if (hoveredDimension == undefined) {
+    return;
+  }
+
+  // initialize min/max per dimension
+  if (Object.keys(dimensionRanges).length == 0) {
+    Object.keys(dataToPlot[0]).forEach((dimension) => {
+        dimensionRanges[dimension] = {min: Number.MAX_VALUE, max: -1 * Number.MAX_VALUE};
+    });
+    for (subjectStatsIndex in dataToPlot) {
+      const subjectStats = dataToPlot[subjectStatsIndex];
+      Object.keys(subjectStats).forEach((dimension) => {
+        if (dimension == "id") {
+          return;
+        }
+        const stat = subjectStats[dimension];
+        if (Number.isNaN(stat) || stat == "nan") {
+          console.log(subjectStats.id, dimension, subjectStats[dimension], "isNaN");
+          return;
+        }
+        dimensionRanges[dimension].min = Math.min(dimensionRanges[dimension].min, stat);
+        dimensionRanges[dimension].max = Math.max(dimensionRanges[dimension].max, stat);
+        if (Number.isNaN(dimensionRanges[dimension].min) || Number.isNaN(dimensionRanges[dimension].min)) {
+          console.log(dimensionRanges[dimension].min, stat);
+          console.log(subjectStats.id, dimension, stat, "isNaN");
+          return;
+        }
+      });
+    }
+  }
+
+  const height = parcoords.height();
+  const range = dimensionRanges[hoveredDimension].max - dimensionRanges[hoveredDimension].min;
+  let hoverValue = (height - event.layerY)/height * range + dimensionRanges[hoveredDimension].min;
+  let closestValue = Number.MAX_VALUE;
+  for (subjectIndex in dataToPlot) {
+    const subjectValue = dataToPlot[subjectIndex][hoveredDimension];
+    const deltaValue = Math.abs(subjectValue - hoverValue);
+    if ( deltaValue < closestValue ) {
+      closestValue = deltaValue;
+      closestSubject = undefined;
+    }
+    if (closestSubject == undefined) {
+      closestSubject = subjectIndex;
+    }
+  }
+  hoveredSubjectID = dataToPlot[closestSubject].id;
+  shownSubjectID = hoveredSubjectID;
+  if (pickedSubjectID == undefined) {
+    parcoords.clear('marked');
+    parcoords.mark([dataToPlot[closestSubject]]);
+  } else {
+    shownSubjectID  = pickedSubjectID;
+  }
+  showSubjectDetail(shownSubjectID, hoveredDimension);
+});
+
+parcoords.updateAxes();
+parcoords.render();
+
+//
+// fix headers
+//
+function rotateLables() {
+  const labelTexts = Array.from(document.getElementsByClassName("label"));
+  labelTexts.forEach(labelText => { 
+    labelText.setAttribute("transform", "translate(-4,60) rotate(-90)");
+  });
+}
+
+setTimeout (rotateLables, 1000);
+
+
+
+// turn off tickmarks
+document.querySelectorAll(".axis .tick").forEach(tick => {
+  tick.setAttribute("style", "opacity: 0")
+});
+
+
+//
+// add categoricals UI
+// - sets renderState used in colorFunction
+//
+
+const categoricalsDiv = document.querySelector("#categoricals");
+const columns = Object.keys(categoricals).length;
+categoricalsDiv.setAttribute("style", `display: grid; grid-template-columns: repeat(${columns}, 1fr)`);
+
+Object.keys(categoricals).forEach(categorical => {
+  renderState[categorical] = {};
+  const categoryDiv = document.createElement("div");
+  categoryDiv.setAttribute("style", "display: grid; grid-template-columns: repeat(1, 1fr)");
+  categoricalsDiv.appendChild(categoryDiv);
+  const categoryLabel = document.createElement("p");
+  categoryLabel.innerText = categorical;
+  categoryDiv.appendChild(categoryLabel);
+  const valuesDiv = document.createElement("div");
+  valuesDiv.setAttribute("style", "display: grid; grid-template-columns: repeat(2, 1fr)");
+  categoryDiv.appendChild(valuesDiv);
+  Object.keys(categoricals[categorical]).forEach(valueKey => {
+     const valueCheck = document.createElement("input");
+     const value = categoricals[categorical][valueKey];
+     valueCheck.id = categorical+value[0];
+     valueCheck.type = "checkbox";
+     valueCheck.checked = true;
+     renderState[categorical][value[0]] = true;
+     valueCheck.addEventListener("change", (event) => {
+       renderState[categorical][value[0]] = event.target.checked;
+       parcoords.render();
+     });
+    const valueLabel = document.createElement("a");
+    valueLabel.innerText = `${value[0]} (${value[1]})`;
+    valuesDiv.appendChild(valueCheck);
+    valuesDiv.appendChild(valueLabel);
+  });
+});
+
+
+
+</script>
+
+</body>
