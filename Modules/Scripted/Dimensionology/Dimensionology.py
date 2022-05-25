@@ -5,7 +5,6 @@ import logging
 import math
 import numpy
 import os
-import pandas
 import pickle
 import random
 import unittest
@@ -106,8 +105,22 @@ class DimensionologyLogic(ScriptedLoadableModuleLogic):
     self.radiologyReports = {}
 
   def hspDimensionologyDemo(self):
+    """
+    Assumes a mount like this:
+      sshfs sdp21@door.nmr.mgh.harvard.edu:/space/alta/1/users /mnt/door
+
+      cp /mnt/door/pieper/data/synthsegAll-CSVs.tar.gz /tmp
+      (cd /tmp/; tar xfz synthsegAll-CSVs.tar.gz)
+
+      ln -s /mnt/door/pieper/data/screenshotsAll /tmp/Slicer-pieper/
+
+    Launched with something like this:
+
+      ~/Downloads/Slicer-4.13.0-2021-08-13-linux-amd64/Slicer --additional-module-paths ~/slicer4/latest/SlicerDMRI/Modules/Scripted/Dimensionology/
+    """
 
     # rad reports
+    print("Getting radiology_reports")
     radPath = "/mnt/door/radiology_reports/Radiology_Table.csv"
     with open(radPath) as radFile:
       csvReader = csv.reader(radFile)
@@ -117,10 +130,11 @@ class DimensionologyLogic(ScriptedLoadableModuleLogic):
         self.radiologyReports[reportNumber] = row[9]
 
     # image measurements
+    print("Getting image measurements")
     imageRoot = f"/mnt/door/pieper/data/nii-parallel/"
     segRoot = f"/mnt/door/pieper/data/synthsegAll/"
     csvPattern = f"/mnt/door/pieper/data/synthsegAll/*.csv"
-    csvPattern = f"/tmp/synthsegAll/synthsegAll/*.csv"
+    csvPattern = f"/home/pieper/data/synthsegAll-CSVs/*.csv"
     for csvPath in glob.glob(csvPattern):
       csvName = csvPath.split("/")[-1]
       subjectID = csvName[4:-8]
@@ -146,9 +160,9 @@ class DimensionologyLogic(ScriptedLoadableModuleLogic):
       except FileNotFoundError:
         print(f"Skipping {csvFilePath}")
 
-    dataToPlotString = json.dumps(self.subjects)
-    categoricalsString = json.dumps(self.categoricals)
-    radiologyReportsString = json.dumps(self.radiologyReports)
+    dataToPlotString = json.dumps(self.subjects, indent=2)
+    categoricalsString = json.dumps(self.categoricals, indent=2)
+    radiologyReportsString = json.dumps(self.radiologyReports, indent=2)
 
     modulePath = os.path.dirname(slicer.modules.dimensionology.path)
     resourceFilePath = os.path.join(modulePath, "Resources", "HSP-ParCoords-template.html")
@@ -170,18 +184,22 @@ class DimensionologyLogic(ScriptedLoadableModuleLogic):
 
 
 
-  def showHSPBrushedDimension(self, brushedData):
-    print(brushedData)
+  def showHSPBrushedDimension(self, brushedData, minSize=20*1024*1024):
     dataPath = "/mnt/door/pieper/data"
     subjectID = brushedData['brushedSubjectID']
     inputPath = f"{dataPath}/nii-parallel/{subjectID}.nii"
     segPath = f"{dataPath}/synthsegAll/seg-{subjectID}.nii.gz"
-    slicer.util.loadVolume(inputPath)
-    seg = slicer.util.loadSegmentation(segPath)
-    seg.CreateClosedSurfaceRepresentation()
+    slicer.util.delayDisplay(f"loading {inputPath} and {segPath}", 300)
+    if os.path.getsize(inputPath) > minSize:
+      slicer.util.loadVolume(inputPath)
+      seg = slicer.util.loadSegmentation(segPath)
+      #seg.CreateClosedSurfaceRepresentation()
+      slicer.util.delayDisplay(f"Displaying {inputPath} and {segPath}", 300)
+    else:
+      slicer.util.delayDisplay(f"Skipping based on size {inputPath} and {segPath}", 300)
 
   def saveScreenshot(self, filePath):
-    slicer.app.processEvents() # wait for a render
+    slicer.util.delayDisplay(f"Saving to {filePath}", 300)
     layoutManager = slicer.app.layoutManager()
     threeDWidget = layoutManager.threeDWidget(0)
     pixmap = threeDWidget.parent().grab()
@@ -191,12 +209,14 @@ class DimensionologyLogic(ScriptedLoadableModuleLogic):
     dataPath = "/mnt/door/pieper/data/screenshotsAll"
     count = 0
     for subject in self.subjects:
-      slicer.mrmlScene.Clear(0) 
-      slicer.app.processEvents() # wait for a render
+      slicer.mrmlScene.Clear(0)
+      slicer.util.delayDisplay(f"Processing {subject}", 200)
       try:
         subjectImagePath = f"{dataPath}/{subject['id']}.jpg"
-        if os.path.exists(subjectImagePath): 
+        if os.path.exists(subjectImagePath):
           print(f"Skipping existing {subjectImagePath}")
+        elif subject['total volume'] < 100:
+          print(f"Skipping due to lack of data")
         else:
           self.showHSPBrushedDimension({'brushedSubjectID': subject['id']})
           self.saveScreenshot(subjectImagePath)

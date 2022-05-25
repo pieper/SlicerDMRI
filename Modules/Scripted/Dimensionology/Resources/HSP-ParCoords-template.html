@@ -31,7 +31,7 @@
 
 <body>
 
-<div id="chart" class="parcoords" style="resize:both;width:100%;height:800px"></div>
+<div id="chart" class="parcoords" style="resize:both;width:100%;height:500px"></div>
 
 <div id="categoricals"></div>
 
@@ -101,7 +101,7 @@ parcoords.ctx.marked
 
 function showSubjectDetail(subject, hoveredDimension) {
   const subjectImage = document.getElementById("subjectImage");
-  subjectImage.src = `./SubjectImages/${subject}.jpg`;
+  subjectImage.src = `./screenshotsAll/${subject}.jpg`;
   const subjectLabel = document.getElementById("subjectLabel");
   subjectLabel.innerText = `${subject} ${hoveredDimension}`;
   const radiologyReportElement = document.getElementById("radiologyReport");
