@@ -429,8 +429,12 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
     path = result['tractPath']
     slicer.mrmlScene.Clear()
     fiberIt = qt.QDirIterator(path, ["*.vtp",], qt.QDir.Files, qt.QDirIterator.Subdirectories)
+    fibers = []
     while fiberIt.hasNext():
-        slicer.util.loadFiberBundle(fiberIt.next())
+        fibers.append(fiberIt.next())
+    fibers.sort()
+    for fiber in fibers:
+        slicer.util.loadFiberBundle(fiber)
     noeddyPath = glob.glob(f"{path}/../../*-noeddy.nii.gz.nhdr")[0]
     slicer.util.loadVolume(noeddyPath)
 
