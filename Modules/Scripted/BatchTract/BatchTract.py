@@ -446,10 +446,12 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         slicer.util.mainWindow().centralWidget().grab().toImage().save(savePath)
         print(savePath)
 
-  def _NIfTIFileInstallPackage():
+  def _NIfTIFileInstallPackage(self):
+    print("trying")
     try:
       import conversion
     except ModuleNotFoundError:
+      print("pip installing")
       slicer.util.pip_install("git+https://github.com/pnlbwh/conversion.git@v2.3")
 
   def find_files(self, directory, pattern):
@@ -464,11 +466,12 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
           yield filename
 
   def pediTract(self, dataPath):
-    self._NIfTIFileInstallPackage
+    self._NIfTIFileInstallPackage()
     import conversion
     import os
     count = 0
     for rotatedBvecPath in self.find_files(dataPath, '*rotated*'):
+        print(f"Processing {rotatedBvecPath}")
         slicer.mrmlScene.Clear()
 
         # make nhdr file
@@ -481,8 +484,9 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         # perform tractography
         print("tractography...")
         tractsPath = os.path.join(niiDirPath, "tracts")
-        if not os.path.exists(tractsPath):
-            os.makedirs(tractsPath)
+        if os.path.exists(tractsPath):
+            shutil.rmtree(tractsPath)
+        os.makedirs(tractsPath)
         maskNode = slicer.util.loadVolume(f'{niiDirPath}/bet-mask.nii.gz')
         castFilter = vtk.vtkImageCast()
         castFilter.SetInputData(maskNode.GetImageData())
@@ -494,12 +498,16 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
                      '--stoppingThreshold', '0.06',
                      '--stoppingFA', '0.08',
                      '--seedingThreshold', '0.10',
-                     '--seedsPerVoxel', '1',
+                     '--seedsPerVoxel', '2',
                      '--dwiFile', nhdrPath,
                      '--maskFile', f'{niiDirPath}/bet-mask.nrrd',
                      '--labels', '1',
                      '--numTensor', '1',
                      '--freeWater',
+                     '--recordTensors',
+                     '--recordFreeWater',
+                     '--recordTrace',
+                     '--recordFA',
                      '--tracts',
                      f'{tractsPath}/tracts.vtk',
                   ]
@@ -510,8 +518,9 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         tfmPath = os.path.join(os.path.dirname(slicer.modules.batchtract.path),
                     "Resources/dHCP_enlarge1.5.tfm")
         tractsScaledPath = f'{tractsPath}/tracts-scaled'
-        if not os.path.exists(tractsScaledPath):
-            os.makedirs(tractsScaledPath)
+        if os.path.exists(tractsScaledPath):
+            shutil.rmtree(tractsScaledPath)
+        os.makedirs(tractsScaledPath)
         command = ['wm_harden_transform.py',
                 '-t', tfmPath,
                 f'{tractsPath}',
@@ -530,6 +539,7 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
                 '-a', f'/Volumes/SSD2T/data/pedistroke/scratch/ORG-Atlases-1.1.1',
                 '-s', f'{slicer.app.slicerHome}/Slicer',
                 '-d',
+                '-c', "2",
                 '-m', '/Users/pieper/slicer/latest/SlicerDMRI-build/inner-build/lib/Slicer-5.1/cli-modules/FiberTractMeasurements',
                 ]
         print(command)
@@ -538,8 +548,9 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         # scale back to baby space
         print("backscale...")
         tractsBackscaledPath = f'{tractsPath}/tracts-backscaled'
-        if not os.path.exists(tractsBackscaledPath):
-            os.makedirs(tractsBackscaledPath)
+        if os.path.exists(tractsBackscaledPath):
+            shutil.rmtree(tractsBackscaledPath)
+        os.makedirs(tractsBackscaledPath)
         command = ['wm_harden_transform.py',
                 '-i',
                 '-t', tfmPath,
@@ -553,7 +564,6 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         count += 1
         print(f"Finished {count}")
         print(f"ooO*Ooo")
-        # break
 
 
         #diffusionNode - slicer.util.loadVolume(nhdrPath)
