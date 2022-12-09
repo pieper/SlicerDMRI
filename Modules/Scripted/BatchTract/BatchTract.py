@@ -66,10 +66,6 @@ class BatchTractWidget(ScriptedLoadableModuleWidget):
     self.parametersFormLayout.addWidget(self.batchTractButton)
     self.batchTractButton.connect('clicked()', self.batchTract)
 
-    self.reviewButton = qt.QPushButton("Review")
-    self.parametersFormLayout.addWidget(self.reviewButton)
-    self.reviewButton.connect('clicked()', self.review)
-
     self.screenshotsButton = qt.QPushButton("Make screenshots")
     self.parametersFormLayout.addWidget(self.screenshotsButton)
     self.screenshotsButton.connect('clicked()', self.screenshots)
@@ -86,6 +82,11 @@ class BatchTractWidget(ScriptedLoadableModuleWidget):
     self.layout.addWidget(resultsCollapsibleButton)
     # Layout within the collapsible button
     self.resultsLayout = qt.QVBoxLayout(resultsCollapsibleButton)
+
+    self.reviewButton = qt.QPushButton("Review")
+    self.resultsLayout.addWidget(self.reviewButton)
+    self.reviewButton.connect('clicked()', self.review)
+
 
     self.resultsList = qt.QListWidget()
     self.resultsLayout.addWidget(self.resultsList)
@@ -107,7 +108,10 @@ class BatchTractWidget(ScriptedLoadableModuleWidget):
     listModel = self.resultsList.model()
     self.resultsList.clear()
     for result in self.results:
-      self.resultsList.addItem(f"{result['patientID']} - {result['method']}")
+      resultString = f"{result['patientID']} - {result['method']}"
+      if "MGHNumber" in result:
+          resultString += f":  {result['MGHNumber']}, {result['Sex']}, {result['Segmented']}"
+      self.resultsList.addItem(resultString)
       item = self.resultsList.item(listModel.rowCount()-1)
       item.setData(qt.Qt.ToolTipRole, json.dumps(result))
     self.resultsList.connect('itemSelectionChanged()', self.onResultItemChanged)
@@ -127,6 +131,8 @@ class BatchTractWidget(ScriptedLoadableModuleWidget):
       self.resultScreenshotLabel = qt.QLabel()
       self.resultScreenshotPixmap = qt.QPixmap()
     screenshotPath = f"{os.path.dirname(result['tractPath'])}/screenshot.png"
+    if not os.path.exists(screenshotPath):
+        print(f"screenshot doesn't exist - run 'Make screenshots' {screenshotPath}")
     self.resultScreenshotPixmap.load(screenshotPath)
     self.resultScreenshotLabel.setPixmap(self.resultScreenshotPixmap)
     self.resultScreenshotLabel.show()
@@ -406,6 +412,7 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
     """
     dirIt = qt.QDirIterator(path, ["*backscaled*",], qt.QDir.Dirs, qt.QDirIterator.Subdirectories)
     tractResults = []
+    tractResultsByMRN = {}
     while dirIt.hasNext():
       backscalePath = dirIt.next()
       parts = backscalePath.split('/')
@@ -417,6 +424,27 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         "patientID": parts[-7],
       }
       tractResults.append(result)
+      tractResultsByMRN[result['patientID']] = result
+
+    try:
+        import pandas
+        import openpyxl
+    except ModuleNotFoundError:
+        pip_install("pandas")
+        pip_install("openpyxl")
+        import pandas
+        import openpyxl
+    identifiersPath = "/Volumes/SSD2T/data/pedistroke/Perinatal Stroke Cohort Identifiers .xlsx"
+    df = pandas.read_excel(identifiersPath)
+    for row in df.itertuples():
+        mrn = str(row.MRN)
+        if mrn not in tractResultsByMRN:
+            print(f"skipping {mrn}")
+            continue
+        result = tractResultsByMRN[mrn]
+        result['MGHNumber'] = row._1
+        result['Sex'] = row.Sex
+        result['Segmented'] = row.Segmented
     return tractResults
 
   def loadResultCompareConverters(self,result):
@@ -538,7 +566,7 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
                 '-o', f'{tractsScaledPath}',
                 '-a', f'/Volumes/SSD2T/data/pedistroke/scratch/ORG-Atlases-1.1.1',
                 '-s', f'{slicer.app.slicerHome}/Slicer',
-                '-d',
+                '-d', "1",
                 '-c', "2",
                 '-m', '/Users/pieper/slicer/latest/SlicerDMRI-build/inner-build/lib/Slicer-5.1/cli-modules/FiberTractMeasurements',
                 ]
