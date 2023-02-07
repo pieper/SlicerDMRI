@@ -430,8 +430,8 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
         import pandas
         import openpyxl
     except ModuleNotFoundError:
-        pip_install("pandas")
-        pip_install("openpyxl")
+        slicer.util.pip_install("pandas")
+        slicer.util.pip_install("openpyxl")
         import pandas
         import openpyxl
     identifiersPath = "/Volumes/SSD2T/data/pedistroke/Perinatal Stroke Cohort Identifiers .xlsx"
@@ -449,13 +449,15 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
 
   def loadResultCompareConverters(self,result):
     slicer.mrmlScene.Clear()
-    slicer.util.loadFiberBundle(result['tractPath'])
     dtiPath = f"{os.path.dirname(result['tractPath'])}/dti.nrrd"
     slicer.util.loadVolume(dtiPath)
+    slicer.util.loadFiberBundle(result['tractPath'])
 
   def loadResult(self,result):
     path = result['tractPath']
     slicer.mrmlScene.Clear()
+    noeddyPath = glob.glob(f"{path}/../../*-noeddy.nii.gz.nhdr")[0]
+    slicer.util.loadVolume(noeddyPath)
     fiberIt = qt.QDirIterator(path, ["*.vtp",], qt.QDir.Files, qt.QDirIterator.Subdirectories)
     fibers = []
     while fiberIt.hasNext():
@@ -463,8 +465,6 @@ class BatchTractLogic(ScriptedLoadableModuleLogic):
     fibers.sort()
     for fiber in fibers:
         slicer.util.loadFiberBundle(fiber)
-    noeddyPath = glob.glob(f"{path}/../../*-noeddy.nii.gz.nhdr")[0]
-    slicer.util.loadVolume(noeddyPath)
 
   def screenshots(self,results):
     for result in results:
